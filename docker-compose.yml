@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: quincail_postgres_18
+    restart: always
+    environment:
+      POSTGRES_USER: quincail_user
+      POSTGRES_PASSWORD: quincail_password_2026
+      POSTGRES_DB: quincail_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_quincail_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quincail_user -d quincail_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pg_quincail_data:
+    driver: local

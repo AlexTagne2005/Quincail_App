@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 class StockEntryItemCreate(BaseModel):
     article_id: uuid.UUID
@@ -17,8 +17,7 @@ class StockEntryItemResponse(BaseModel):
     unit_cost: float
     subtotal: float
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class StockEntryCreate(BaseModel):
     id: Optional[uuid.UUID] = None  # Offline-first: client can provide UUID
@@ -43,5 +42,4 @@ class StockEntryResponse(BaseModel):
     created_at: datetime
     items: List[StockEntryItemResponse] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

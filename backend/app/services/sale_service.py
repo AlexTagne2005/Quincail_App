@@ -42,7 +42,7 @@ class SaleService:
 
         for item_in in sale_in.items:
             art_res = await db.execute(
-                select(Article).where(Article.id == item_in.article_id).with_for_update()
+                select(Article).where(Article.id == item_in.article_id)
             )
             article = art_res.scalars().first()
             if not article:

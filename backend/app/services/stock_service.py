@@ -21,8 +21,8 @@ class StockService:
         notes: Optional[str] = None,
         allow_negative_stock: bool = False
     ) -> StockMovement:
-        # Lock article row for update
-        result = await db.execute(select(Article).where(Article.id == article_id).with_for_update())
+        # Fetch article row
+        result = await db.execute(select(Article).where(Article.id == article_id))
         article = result.scalars().first()
         
         if not article:

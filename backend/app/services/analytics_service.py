@@ -57,7 +57,8 @@ class AnalyticsService:
                 and_(Sale.sale_date >= start_of_month, Sale.status == "COMPLETED")
             )
         )
-        gross_margin_month = margin_res.scalar_one()
+        gross_margin_month = float(margin_res.scalar_one())
+        total_rev_month = float(total_rev_month)
         margin_percent = (gross_margin_month / total_rev_month * 100.0) if total_rev_month > 0 else 0.0
 
         # 3. Stock stats (Total count, total cost value, selling value, low stock, out of stock)

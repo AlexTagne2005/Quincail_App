@@ -3,18 +3,16 @@ import {
   History,
   ArrowUpRight,
   ArrowDownLeft,
-  Filter,
   Search,
   RefreshCw,
-  FileSpreadsheet,
 } from "lucide-react"
 import { movementApi } from "@/api/movementApi"
-import { StockMovement, MovementDirection } from "@/types"
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
+import { StockMovement } from "@/types"
+import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { formatDate } from "@/lib/utils"
+import { formatDate, formatErrorMessage } from "@/lib/utils"
 
 export function MovementsPage() {
   const [movements, setMovements] = useState<StockMovement[]>([])
@@ -28,7 +26,7 @@ export function MovementsPage() {
     try {
       const data = await movementApi.getMovements({ limit: 500 })
       setMovements(data)
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Error loading stock movements", err)
     } finally {
       setLoading(false)
@@ -41,20 +39,24 @@ export function MovementsPage() {
 
   const getMovementTypeLabel = (type: string) => {
     switch (type) {
+      case "ENTREE_ACHAT":
       case "ENTRY_PURCHASE":
         return "Achat / Réception Fournisseur"
+      case "SORTIE_VENTE":
       case "EXIT_SALE":
         return "Sortie / Vente Comptoir"
+      case "SORTIE_PERTE":
       case "EXIT_LOSS":
         return "Perte / Casse / Avarie"
+      case "SORTIE_INTERNE":
       case "EXIT_INTERNAL":
         return "Consommation Interne / Chantier"
+      case "SORTIE_AJUSTEMENT":
+      case "ENTREE_AJUSTEMENT":
       case "INVENTORY_ADJUST":
         return "Ajustement d'Inventaire"
-      case "RETURN_CUSTOMER":
-        return "Retour Client"
-      case "RETURN_SUPPLIER":
-        return "Retour Fournisseur"
+      case "ENTREE_INVENTAIRE":
+        return "Stock Initial Création"
       default:
         return type
     }
@@ -67,9 +69,9 @@ export function MovementsPage() {
     const search = searchTerm.toLowerCase().trim()
     const matchesSearch =
       !search ||
-      (m.article?.name && m.article.name.toLowerCase().includes(search)) ||
-      (m.article?.code && m.article.code.toLowerCase().includes(search)) ||
-      (m.reference && m.reference.toLowerCase().includes(search))
+      (m.article_name && m.article_name.toLowerCase().includes(search)) ||
+      (m.article_code && m.article_code.toLowerCase().includes(search)) ||
+      (m.reference_code && m.reference_code.toLowerCase().includes(search))
     return matchesDirection && matchesType && matchesSearch
   })
 
@@ -162,11 +164,11 @@ export function MovementsPage() {
               className="w-full h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm"
             >
               <option value="ALL">Tous les motifs</option>
-              <option value="ENTRY_PURCHASE">Achat / Réception</option>
-              <option value="EXIT_SALE">Vente Caisse</option>
-              <option value="EXIT_LOSS">Perte / Casse</option>
-              <option value="EXIT_INTERNAL">Consommation interne</option>
-              <option value="INVENTORY_ADJUST">Ajustement inventaire</option>
+              <option value="ENTREE_ACHAT">Achat / Réception</option>
+              <option value="SORTIE_VENTE">Vente Caisse</option>
+              <option value="SORTIE_PERTE">Perte / Casse</option>
+              <option value="SORTIE_INTERNE">Consommation interne</option>
+              <option value="ENTREE_INVENTAIRE">Stock Initial</option>
             </select>
           </div>
         </div>
@@ -212,10 +214,10 @@ export function MovementsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <span className="font-semibold text-slate-900 block">
-                          {mov.article?.name || "Article"}
+                          {mov.article_name || "Article"}
                         </span>
                         <span className="font-mono text-[11px] text-slate-400">
-                          {mov.article?.code}
+                          {mov.article_code}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
@@ -229,7 +231,7 @@ export function MovementsPage() {
                       <td className="px-4 py-3 text-center font-extrabold text-sm">
                         <span className={isEntry ? "text-emerald-600" : "text-red-600"}>
                           {isEntry ? "+" : "-"}
-                          {mov.quantity} {mov.article?.unit || ""}
+                          {mov.quantity}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center font-mono text-xs text-slate-600 whitespace-nowrap">
@@ -238,10 +240,10 @@ export function MovementsPage() {
                         <span className="font-bold text-slate-900">{mov.quantity_after}</span>
                       </td>
                       <td className="px-4 py-3 font-mono text-xs text-slate-600">
-                        {mov.reference || "—"}
+                        {mov.reference_code || "—"}
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-600">
-                        {mov.user?.full_name || "Système"}
+                        {mov.user_name || "Système"}
                       </td>
                     </tr>
                   )

@@ -9,10 +9,12 @@ export interface CartItem {
   total: number
 }
 
+export type PaymentMethod = "ESPECES" | "MOBILE_MONEY" | "CARTE" | "CREDIT"
+
 interface CartState {
   items: CartItem[]
   customerId: string | null
-  paymentMethod: "CASH" | "MOMO" | "CARD" | "CREDIT"
+  paymentMethod: PaymentMethod
   globalDiscount: number
   notes: string
 
@@ -24,7 +26,7 @@ interface CartState {
   clearCart: () => void
 
   setCustomerId: (id: string | null) => void
-  setPaymentMethod: (method: "CASH" | "MOMO" | "CARD" | "CREDIT") => void
+  setPaymentMethod: (method: PaymentMethod) => void
   setGlobalDiscount: (amount: number) => void
   setNotes: (notes: string) => void
 
@@ -35,7 +37,7 @@ interface CartState {
 export const useCartStore = create<CartState>((set, get) => ({
   items: [],
   customerId: null,
-  paymentMethod: "CASH",
+  paymentMethod: "ESPECES",
   globalDiscount: 0,
   notes: "",
 
@@ -121,7 +123,7 @@ export const useCartStore = create<CartState>((set, get) => ({
       customerId: null,
       globalDiscount: 0,
       notes: "",
-      paymentMethod: "CASH",
+      paymentMethod: "ESPECES",
     })
   },
 

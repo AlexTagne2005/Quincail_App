@@ -3,10 +3,8 @@ import {
   Package,
   Plus,
   Search,
-  Filter,
   Edit2,
   AlertTriangle,
-  CheckCircle2,
   XCircle,
   RefreshCw,
 } from "lucide-react"
@@ -14,10 +12,9 @@ import { articleApi } from "@/api/articleApi"
 import { Article, ArticleCreate, Category } from "@/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrency, formatErrorMessage } from "@/lib/utils"
 
 export function ArticlesPage() {
   const [articles, setArticles] = useState<Article[]>([])
@@ -38,12 +35,11 @@ export function ArticlesPage() {
     category_id: "",
     code: "",
     name: "",
-    description: "",
     unit: "Pièce",
     purchase_price: 0,
     selling_price: 0,
-    stock_min: 5,
-    stock_max: 100,
+    min_stock_alert: 5,
+    initial_stock: 0,
     barcode: "",
   })
 
@@ -51,7 +47,7 @@ export function ArticlesPage() {
     setLoading(true)
     try {
       const [arts, cats] = await Promise.all([
-        articleApi.getArticles({ limit: 300 }),
+        articleApi.getArticles(),
         articleApi.getCategories(),
       ])
       setArticles(arts)
@@ -59,7 +55,7 @@ export function ArticlesPage() {
       if (cats.length > 0 && !formData.category_id) {
         setFormData((prev) => ({ ...prev, category_id: cats[0].id }))
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Error loading articles", err)
     } finally {
       setLoading(false)
@@ -76,12 +72,11 @@ export function ArticlesPage() {
       category_id: categories[0]?.id || "",
       code: `ART-${Math.floor(1000 + Math.random() * 9000)}`,
       name: "",
-      description: "",
       unit: "Pièce",
       purchase_price: 1000,
       selling_price: 1500,
-      stock_min: 5,
-      stock_max: 100,
+      min_stock_alert: 5,
+      initial_stock: 10,
       barcode: "",
     })
     setFormError(null)
@@ -94,12 +89,11 @@ export function ArticlesPage() {
       category_id: article.category_id,
       code: article.code,
       name: article.name,
-      description: article.description || "",
       unit: article.unit,
       purchase_price: article.purchase_price,
       selling_price: article.selling_price,
-      stock_min: article.stock_min,
-      stock_max: article.stock_max,
+      min_stock_alert: article.min_stock_alert ?? 5,
+      initial_stock: 0,
       barcode: article.barcode || "",
     })
     setFormError(null)
@@ -113,14 +107,25 @@ export function ArticlesPage() {
 
     try {
       if (editingArticle) {
-        await articleApi.updateArticle(editingArticle.id, formData)
+        await articleApi.updateArticle(editingArticle.id, {
+          name: formData.name,
+          category_id: formData.category_id,
+          unit: formData.unit,
+          purchase_price: formData.purchase_price,
+          selling_price: formData.selling_price,
+          min_stock_alert: formData.min_stock_alert,
+          barcode: formData.barcode || undefined,
+        })
       } else {
-        await articleApi.createArticle(formData)
+        await articleApi.createArticle({
+          ...formData,
+          barcode: formData.barcode || undefined,
+        })
       }
       setIsModalOpen(false)
       loadArticles()
-    } catch (err: any) {
-      setFormError(err.response?.data?.detail || "Erreur lors de l'enregistrement de l'article")
+    } catch (err: unknown) {
+      setFormError(formatErrorMessage(err, "Erreur lors de l'enregistrement de l'article"))
     } finally {
       setSubmitting(false)
     }
@@ -135,14 +140,20 @@ export function ArticlesPage() {
       art.name.toLowerCase().includes(search) ||
       art.code.toLowerCase().includes(search) ||
       (art.barcode && art.barcode.toLowerCase().includes(search))
-    const matchesLowStock = !lowStockOnly || art.stock_current <= art.stock_min
+    const currentStock = art.current_stock ?? art.stock_current ?? 0
+    const minStock = art.min_stock_alert ?? art.stock_min ?? 0
+    const matchesLowStock = !lowStockOnly || currentStock <= minStock
     return matchesCategory && matchesSearch && matchesLowStock
   })
 
   // Counters
   const totalArticles = articles.length
-  const lowStockCount = articles.filter((a) => a.stock_current <= a.stock_min && a.stock_current > 0).length
-  const outOfStockCount = articles.filter((a) => a.stock_current <= 0).length
+  const lowStockCount = articles.filter((a) => {
+    const s = a.current_stock ?? a.stock_current ?? 0
+    const m = a.min_stock_alert ?? a.stock_min ?? 0
+    return s <= m && s > 0
+  }).length
+  const outOfStockCount = articles.filter((a) => (a.current_stock ?? a.stock_current ?? 0) <= 0).length
 
   return (
     <div className="space-y-6">
@@ -251,7 +262,7 @@ export function ArticlesPage() {
                 <th className="px-4 py-3">Désignation</th>
                 <th className="px-4 py-3">Catégorie</th>
                 <th className="px-4 py-3 text-center">Stock Actuel</th>
-                <th className="px-4 py-3 text-center">Seuils (Min/Max)</th>
+                <th className="px-4 py-3 text-center">Seuil Min</th>
                 <th className="px-4 py-3 text-right">Prix Achat</th>
                 <th className="px-4 py-3 text-right">Prix Vente</th>
                 <th className="px-4 py-3 text-right">Marge Est.</th>
@@ -273,8 +284,10 @@ export function ArticlesPage() {
                 </tr>
               ) : (
                 filteredArticles.map((art) => {
-                  const isOutOfStock = art.stock_current <= 0
-                  const isLowStock = art.stock_current <= art.stock_min && !isOutOfStock
+                  const currentStock = art.current_stock ?? art.stock_current ?? 0
+                  const minStock = art.min_stock_alert ?? art.stock_min ?? 0
+                  const isOutOfStock = currentStock <= 0
+                  const isLowStock = currentStock <= minStock && !isOutOfStock
                   const marginUnit = art.selling_price - art.purchase_price
                   const marginPercent =
                     art.selling_price > 0 ? (marginUnit / art.selling_price) * 100 : 0
@@ -286,14 +299,9 @@ export function ArticlesPage() {
                       </td>
                       <td className="px-4 py-3 font-semibold text-slate-900">
                         <div>{art.name}</div>
-                        {art.description && (
-                          <div className="text-xs font-normal text-slate-400 truncate max-w-xs">
-                            {art.description}
-                          </div>
-                        )}
                       </td>
                       <td className="px-4 py-3 text-slate-500 text-xs">
-                        {art.category?.name || "Général"}
+                        {art.category_name || "Général"}
                       </td>
                       <td className="px-4 py-3 text-center font-bold">
                         <span
@@ -305,11 +313,11 @@ export function ArticlesPage() {
                               : "bg-emerald-100 text-emerald-800"
                           }`}
                         >
-                          {art.stock_current} {art.unit}
+                          {currentStock} {art.unit}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center text-xs text-slate-500">
-                        {art.stock_min} / {art.stock_max} {art.unit}
+                        {minStock} {art.unit}
                       </td>
                       <td className="px-4 py-3 text-right text-xs text-slate-600">
                         {formatCurrency(art.purchase_price)}
@@ -388,6 +396,7 @@ export function ArticlesPage() {
               </label>
               <Input
                 required
+                disabled={!!editingArticle}
                 value={formData.code}
                 onChange={(e) => setFormData({ ...formData, code: e.target.value })}
                 placeholder="ex: VIS-001"
@@ -467,23 +476,24 @@ export function ArticlesPage() {
               <Input
                 type="number"
                 min="0"
-                value={formData.stock_min}
+                value={formData.min_stock_alert}
                 onChange={(e) =>
-                  setFormData({ ...formData, stock_min: Number(e.target.value) || 0 })
+                  setFormData({ ...formData, min_stock_alert: Number(e.target.value) || 0 })
                 }
               />
             </div>
 
             <div>
               <label className="text-xs font-semibold text-slate-700 mb-1 block">
-                Stock Maximum
+                {editingArticle ? "Stock Actuel" : "Stock Initial"}
               </label>
               <Input
                 type="number"
                 min="0"
-                value={formData.stock_max}
+                disabled={!!editingArticle}
+                value={editingArticle ? (editingArticle.current_stock ?? editingArticle.stock_current ?? 0) : formData.initial_stock}
                 onChange={(e) =>
-                  setFormData({ ...formData, stock_max: Number(e.target.value) || 0 })
+                  setFormData({ ...formData, initial_stock: Number(e.target.value) || 0 })
                 }
               />
             </div>

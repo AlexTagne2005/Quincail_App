@@ -3,11 +3,6 @@ import {
   ArrowDownToLine,
   Plus,
   Trash2,
-  CheckCircle,
-  Truck,
-  FileText,
-  Calendar,
-  AlertCircle,
   RefreshCw,
   Eye,
 } from "lucide-react"
@@ -20,7 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { formatCurrency, formatDate, formatErrorMessage } from "@/lib/utils"
 
 export function EntriesPage() {
   const [entries, setEntries] = useState<StockEntry[]>([])
@@ -38,7 +33,7 @@ export function EntriesPage() {
 
   // New Reception Form State
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>("")
-  const [referenceDoc, setReferenceDoc] = useState<string>("")
+  const [referenceInvoice, setReferenceInvoice] = useState<string>("")
   const [notes, setNotes] = useState<string>("")
   const [lines, setLines] = useState<StockEntryItemCreate[]>([])
 
@@ -47,13 +42,13 @@ export function EntriesPage() {
     try {
       const [entriesData, articlesData, suppliersData] = await Promise.all([
         entryApi.getEntries(),
-        articleApi.getArticles({ limit: 300 }),
+        articleApi.getArticles(),
         partnerApi.getSuppliers(),
       ])
       setEntries(entriesData)
       setArticles(articlesData)
       setSuppliers(suppliersData)
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("Error loading entries data", err)
     } finally {
       setLoading(false)
@@ -66,14 +61,14 @@ export function EntriesPage() {
 
   const handleOpenNewEntry = () => {
     setSelectedSupplierId(suppliers[0]?.id || "")
-    setReferenceDoc(`BL-${Math.floor(10000 + Math.random() * 90000)}`)
+    setReferenceInvoice(`BL-${Math.floor(10000 + Math.random() * 90000)}`)
     setNotes("")
     if (articles.length > 0) {
       setLines([
         {
           article_id: articles[0].id,
           quantity: 10,
-          purchase_price: articles[0].purchase_price,
+          unit_cost: articles[0].purchase_price,
         },
       ])
     } else {
@@ -91,7 +86,7 @@ export function EntriesPage() {
       {
         article_id: firstArt.id,
         quantity: 5,
-        purchase_price: firstArt.purchase_price,
+        unit_cost: firstArt.purchase_price,
       },
     ])
   }
@@ -111,7 +106,7 @@ export function EntriesPage() {
       updated[index] = {
         ...updated[index],
         article_id: value,
-        purchase_price: art ? art.purchase_price : updated[index].purchase_price,
+        unit_cost: art ? art.purchase_price : updated[index].unit_cost,
       }
     } else {
       updated[index] = {
@@ -123,7 +118,7 @@ export function EntriesPage() {
   }
 
   const totalReceptionAmount = lines.reduce(
-    (sum, l) => sum + (Number(l.quantity) || 0) * (Number(l.purchase_price) || 0),
+    (sum, l) => sum + (Number(l.quantity) || 0) * (Number(l.unit_cost) || 0),
     0
   )
 
@@ -140,19 +135,19 @@ export function EntriesPage() {
     try {
       await entryApi.createEntry({
         supplier_id: selectedSupplierId || undefined,
-        reference_doc: referenceDoc || undefined,
+        reference_invoice: referenceInvoice || undefined,
         notes: notes || undefined,
         items: lines.map((l) => ({
           article_id: l.article_id,
           quantity: Number(l.quantity),
-          purchase_price: Number(l.purchase_price),
+          unit_cost: Number(l.unit_cost),
         })),
       })
       setIsModalOpen(false)
       loadData()
-    } catch (err: any) {
+    } catch (err: unknown) {
       setFormError(
-        err.response?.data?.detail || "Erreur lors de l'enregistrement de la réception"
+        formatErrorMessage(err, "Erreur lors de l'enregistrement de la réception")
       )
     } finally {
       setSubmitting(false)
@@ -224,13 +219,13 @@ export function EntriesPage() {
                         {entry.entry_number}
                       </td>
                       <td className="px-4 py-3 text-slate-600 text-xs">
-                        {formatDate(entry.created_at)}
+                        {formatDate(entry.entry_date || entry.created_at)}
                       </td>
                       <td className="px-4 py-3 font-medium text-slate-900">
-                        {entry.supplier?.name || "Fournisseur non spécifié"}
+                        {entry.supplier_name || "Fournisseur non spécifié"}
                       </td>
                       <td className="px-4 py-3 text-slate-600 font-mono text-xs">
-                        {entry.reference_doc || "—"}
+                        {entry.reference_invoice || "—"}
                       </td>
                       <td className="px-4 py-3 text-center text-xs">
                         <span className="font-semibold text-slate-700">
@@ -238,7 +233,7 @@ export function EntriesPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right font-extrabold text-slate-900">
-                        {formatCurrency(entry.total_amount)}
+                        {formatCurrency(entry.total_cost)}
                       </td>
                       <td className="px-4 py-3 text-center">
                         <Badge variant="success">Réceptionné</Badge>
@@ -307,8 +302,8 @@ export function EntriesPage() {
               </label>
               <Input
                 required
-                value={referenceDoc}
-                onChange={(e) => setReferenceDoc(e.target.value)}
+                value={referenceInvoice}
+                onChange={(e) => setReferenceInvoice(e.target.value)}
                 placeholder="ex: BL-84920"
               />
             </div>
@@ -344,8 +339,7 @@ export function EntriesPage() {
 
             <div className="max-h-60 overflow-y-auto space-y-2 border border-slate-200 rounded-lg p-2 bg-slate-50/50">
               {lines.map((line, idx) => {
-                const selectedArt = articles.find((a) => a.id === line.article_id)
-                const lineTotal = (Number(line.quantity) || 0) * (Number(line.purchase_price) || 0)
+                const lineTotal = (Number(line.quantity) || 0) * (Number(line.unit_cost) || 0)
 
                 return (
                   <div
@@ -358,11 +352,14 @@ export function EntriesPage() {
                         onChange={(e) => handleLineChange(idx, "article_id", e.target.value)}
                         className="w-full h-8 text-xs rounded border border-slate-300 bg-white px-2"
                       >
-                        {articles.map((a) => (
-                          <option key={a.id} value={a.id}>
-                            [{a.code}] {a.name} (Stock: {a.stock_current} {a.unit})
-                          </option>
-                        ))}
+                        {articles.map((a) => {
+                          const stock = a.current_stock ?? a.stock_current ?? 0
+                          return (
+                            <option key={a.id} value={a.id}>
+                              [{a.code}] {a.name} (Stock: {stock} {a.unit})
+                            </option>
+                          )
+                        })}
                       </select>
                     </div>
 
@@ -385,11 +382,11 @@ export function EntriesPage() {
                         type="number"
                         min="0"
                         required
-                        value={line.purchase_price}
+                        value={line.unit_cost}
                         onChange={(e) =>
                           handleLineChange(
                             idx,
-                            "purchase_price",
+                            "unit_cost",
                             Math.max(0, Number(e.target.value) || 0)
                           )
                         }
@@ -454,7 +451,7 @@ export function EntriesPage() {
               <Badge variant="success">Réceptionné</Badge>
             </DialogTitle>
             <DialogDescription>
-              Enregistré le {formatDate(selectedEntry.created_at)} • Réf: {selectedEntry.reference_doc || "N/A"}
+              Enregistré le {formatDate(selectedEntry.entry_date || selectedEntry.created_at)} • Réf: {selectedEntry.reference_invoice || "N/A"}
             </DialogDescription>
           </DialogHeader>
 
@@ -462,7 +459,7 @@ export function EntriesPage() {
             <div className="bg-slate-50 p-3 rounded-lg text-xs space-y-1">
               <p>
                 <strong className="text-slate-700">Fournisseur:</strong>{" "}
-                {selectedEntry.supplier?.name || "Non spécifié"}
+                {selectedEntry.supplier_name || "Non spécifié"}
               </p>
               {selectedEntry.notes && (
                 <p>
@@ -476,20 +473,20 @@ export function EntriesPage() {
                 <tr>
                   <th className="p-2">Article</th>
                   <th className="p-2 text-center">Quantité</th>
-                  <th className="p-2 text-right">Prix d'Achat</th>
+                  <th className="p-2 text-right">Coût Unitaire</th>
                   <th className="p-2 text-right">Total</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {selectedEntry.items.map((item) => (
                   <tr key={item.id}>
-                    <td className="p-2 font-medium">{item.article?.name || "Article"}</td>
+                    <td className="p-2 font-medium">{item.article_name || "Article"}</td>
                     <td className="p-2 text-center font-bold">
-                      {item.quantity} {item.article?.unit || ""}
+                      {item.quantity}
                     </td>
-                    <td className="p-2 text-right">{formatCurrency(item.purchase_price)}</td>
+                    <td className="p-2 text-right">{formatCurrency(item.unit_cost)}</td>
                     <td className="p-2 text-right font-extrabold text-blue-600">
-                      {formatCurrency(item.total_price)}
+                      {formatCurrency(item.subtotal)}
                     </td>
                   </tr>
                 ))}
@@ -498,7 +495,7 @@ export function EntriesPage() {
 
             <div className="flex justify-between items-center pt-2 border-t border-slate-200 text-sm font-extrabold">
               <span>TOTAL RÉCEPTIONNÉ:</span>
-              <span className="text-blue-600">{formatCurrency(selectedEntry.total_amount)}</span>
+              <span className="text-blue-600">{formatCurrency(selectedEntry.total_cost)}</span>
             </div>
           </div>
 

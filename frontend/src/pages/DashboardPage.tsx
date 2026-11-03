@@ -3,7 +3,6 @@ import { Link } from "react-router-dom"
 import {
   TrendingUp,
   DollarSign,
-  Package,
   AlertTriangle,
   ArrowUpRight,
   ShoppingCart,
@@ -31,7 +30,7 @@ import { DashboardOverview } from "@/types"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrency, formatErrorMessage } from "@/lib/utils"
 
 const PIE_COLORS = ["#2563eb", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#64748b"]
 
@@ -46,8 +45,8 @@ export function DashboardPage() {
     try {
       const overview = await dashboardApi.getOverview()
       setData(overview)
-    } catch (err: any) {
-      setError(err.message || "Erreur de chargement des statistiques")
+    } catch (err: unknown) {
+      setError(formatErrorMessage(err, "Erreur de chargement des statistiques"))
     } finally {
       setLoading(false)
     }
@@ -79,7 +78,7 @@ export function DashboardPage() {
     )
   }
 
-  const { kpis, sales_margin_chart, top_articles, category_distribution, low_stock_alerts } = data
+  const { kpis, recent_sales_chart, top_selling_articles, category_distribution, critical_stock_articles } = data
 
   return (
     <div className="space-y-6">
@@ -124,10 +123,10 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-extrabold text-slate-900">
-              {formatCurrency(kpis.today_sales)}
+              {formatCurrency(kpis.total_revenue_today)}
             </div>
             <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
-              <span className="font-semibold text-blue-600">{kpis.today_sales_count}</span> tickets encaissés ce jour
+              <span className="font-semibold text-blue-600">{kpis.total_sales_count_today}</span> tickets encaissés ce jour
             </p>
           </CardContent>
         </Card>
@@ -144,10 +143,10 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-extrabold text-slate-900">
-              {formatCurrency(kpis.month_sales)}
+              {formatCurrency(kpis.total_revenue_month)}
             </div>
             <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
-              <span className="font-semibold text-emerald-600">{kpis.month_sales_count}</span> ventes sur le mois
+              <span className="font-semibold text-emerald-600">{kpis.total_articles_count}</span> références au catalogue
             </p>
           </CardContent>
         </Card>
@@ -164,11 +163,11 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-extrabold text-slate-900">
-              {formatCurrency(kpis.month_margin)}
+              {formatCurrency(kpis.gross_margin_month)}
             </div>
             <div className="flex items-center gap-2 mt-1">
               <Badge variant="success" className="text-xs font-semibold">
-                {kpis.margin_percentage.toFixed(1)}% de marge
+                {kpis.gross_margin_percentage.toFixed(1)}% de marge
               </Badge>
               <span className="text-[11px] text-slate-500">sur prix de vente</span>
             </div>
@@ -187,7 +186,7 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-extrabold text-slate-900">
-              {formatCurrency(kpis.stock_value_purchase)}
+              {formatCurrency(kpis.total_stock_value_cost)}
             </div>
             <div className="flex items-center gap-2 mt-1">
               {kpis.low_stock_count > 0 || kpis.out_of_stock_count > 0 ? (
@@ -201,7 +200,7 @@ export function DashboardPage() {
                 </Badge>
               )}
               <span className="text-[11px] text-slate-500">
-                Vente est. {formatCurrency(kpis.stock_value_sale)}
+                Vente est. {formatCurrency(kpis.total_stock_value_selling)}
               </span>
             </div>
           </CardContent>
@@ -219,9 +218,9 @@ export function DashboardPage() {
         <CardContent>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={sales_margin_chart} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <AreaChart data={recent_sales_chart} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#2563eb" stopOpacity={0.4} />
                     <stop offset="95%" stopColor="#2563eb" stopOpacity={0.0} />
                   </linearGradient>
@@ -245,12 +244,12 @@ export function DashboardPage() {
                 <Legend />
                 <Area
                   type="monotone"
-                  dataKey="sales"
+                  dataKey="revenue"
                   name="Chiffre d'Affaires"
                   stroke="#2563eb"
                   strokeWidth={2}
                   fillOpacity={1}
-                  fill="url(#colorSales)"
+                  fill="url(#colorRevenue)"
                 />
                 <Area
                   type="monotone"
@@ -269,7 +268,7 @@ export function DashboardPage() {
 
       {/* Row 3: Top Articles & Category Distribution */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Top 8 Articles */}
+        {/* Top Selling Articles */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base font-bold">
@@ -277,14 +276,14 @@ export function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {top_articles.length === 0 ? (
+            {!top_selling_articles || top_selling_articles.length === 0 ? (
               <p className="text-sm text-slate-400 py-12 text-center">Aucune vente enregistrée pour le moment</p>
             ) : (
               <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     layout="vertical"
-                    data={top_articles}
+                    data={top_selling_articles}
                     margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
@@ -319,7 +318,7 @@ export function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {category_distribution.length === 0 ? (
+            {!category_distribution || category_distribution.length === 0 ? (
               <p className="text-sm text-slate-400 py-12 text-center">Aucune donnée de catégorie</p>
             ) : (
               <div className="h-64 w-full flex items-center justify-center">
@@ -359,7 +358,7 @@ export function DashboardPage() {
             <AlertTriangle className="h-5 w-5 text-amber-600" />
             <div>
               <CardTitle className="text-base font-bold text-amber-900">
-                Alertes de Stock Critique ({low_stock_alerts.length})
+                Alertes de Stock Critique ({critical_stock_articles?.length || 0})
               </CardTitle>
               <p className="text-xs text-amber-700">
                 Articles ayant atteint ou franchi le seuil d'approvisionnement d'urgence
@@ -373,7 +372,7 @@ export function DashboardPage() {
           </Link>
         </CardHeader>
         <CardContent className="p-0">
-          {low_stock_alerts.length === 0 ? (
+          {!critical_stock_articles || critical_stock_articles.length === 0 ? (
             <div className="p-6 text-center text-sm text-slate-500">
               ✅ Aucun article en stock critique. Tous les stocks sont au-dessus des seuils d'alerte.
             </div>
@@ -391,8 +390,10 @@ export function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {low_stock_alerts.map((item) => {
-                    const isOutOfStock = item.stock_current <= 0
+                  {critical_stock_articles.map((item) => {
+                    const currentStock = item.current_stock ?? item.stock_current ?? 0
+                    const isOutOfStock = currentStock <= 0
+                    const minStock = item.min_stock_alert ?? item.stock_min ?? 0
                     return (
                       <tr key={item.id} className="hover:bg-amber-50/30">
                         <td className="px-4 py-3 font-mono text-xs font-semibold text-slate-700">
@@ -402,15 +403,15 @@ export function DashboardPage() {
                           {item.name}
                         </td>
                         <td className="px-4 py-3 text-slate-500">
-                          {item.category_name}
+                          {item.category_name || "Général"}
                         </td>
                         <td className="px-4 py-3 text-center font-bold">
                           <span className={isOutOfStock ? "text-red-600" : "text-amber-600"}>
-                            {item.stock_current} {item.unit}
+                            {currentStock} {item.unit}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-center text-slate-500">
-                          {item.stock_min} {item.unit}
+                          {minStock} {item.unit}
                         </td>
                         <td className="px-4 py-3 text-right">
                           <Badge variant={isOutOfStock ? "destructive" : "warning"}>

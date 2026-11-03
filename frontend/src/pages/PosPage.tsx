@@ -22,9 +22,8 @@ import { useCartStore } from "@/store/useCartStore"
 import { useAuthStore } from "@/store/useAuthStore"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { formatCurrency, formatDate, formatErrorMessage } from "@/lib/utils"
 
 export function PosPage() {
   const [articles, setArticles] = useState<Article[]>([])
@@ -59,7 +58,7 @@ export function PosPage() {
     setLoading(true)
     try {
       const [arts, cats, custs] = await Promise.all([
-        articleApi.getArticles({ limit: 200 }),
+        articleApi.getArticles(),
         articleApi.getCategories(),
         partnerApi.getCustomers(),
       ])
@@ -105,7 +104,6 @@ export function PosPage() {
           article_id: item.article.id,
           quantity: item.quantity,
           unit_price: item.unit_price,
-          discount: item.discount,
         })),
       }
 
@@ -115,9 +113,9 @@ export function PosPage() {
       clearCart()
       // Refresh articles stock
       loadData()
-    } catch (err: any) {
+    } catch (err: unknown) {
       setCheckoutError(
-        err.response?.data?.detail || "Échec de l'encaissement de la vente."
+        formatErrorMessage(err, "Échec de l'encaissement de la vente.")
       )
     } finally {
       setSubmitting(false)
@@ -183,7 +181,9 @@ export function PosPage() {
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
               {filteredArticles.map((article) => {
-                const isOutOfStock = article.stock_current <= 0
+                const stock = article.current_stock ?? article.stock_current ?? 0
+                const minStock = article.min_stock_alert ?? article.stock_min ?? 0
+                const isOutOfStock = stock <= 0
                 return (
                   <div
                     key={article.id}
@@ -203,12 +203,12 @@ export function PosPage() {
                           className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
                             isOutOfStock
                               ? "bg-red-100 text-red-700"
-                              : article.stock_current <= article.stock_min
+                              : stock <= minStock
                               ? "bg-amber-100 text-amber-800"
                               : "bg-emerald-100 text-emerald-800"
                           }`}
                         >
-                          {article.stock_current} {article.unit}
+                          {stock} {article.unit}
                         </span>
                       </div>
                       <h4 className="font-semibold text-slate-900 text-sm line-clamp-2 leading-snug">
@@ -278,9 +278,9 @@ export function PosPage() {
             <div className="grid grid-cols-4 gap-1">
               <button
                 type="button"
-                onClick={() => setPaymentMethod("CASH")}
+                onClick={() => setPaymentMethod("ESPECES")}
                 className={`py-1.5 px-1 rounded-md text-[11px] font-semibold border flex flex-col items-center gap-0.5 ${
-                  paymentMethod === "CASH"
+                  paymentMethod === "ESPECES"
                     ? "bg-blue-50 border-blue-600 text-blue-700"
                     : "border-slate-200 text-slate-600 hover:bg-slate-50"
                 }`}
@@ -291,9 +291,9 @@ export function PosPage() {
 
               <button
                 type="button"
-                onClick={() => setPaymentMethod("MOMO")}
+                onClick={() => setPaymentMethod("MOBILE_MONEY")}
                 className={`py-1.5 px-1 rounded-md text-[11px] font-semibold border flex flex-col items-center gap-0.5 ${
-                  paymentMethod === "MOMO"
+                  paymentMethod === "MOBILE_MONEY"
                     ? "bg-blue-50 border-blue-600 text-blue-700"
                     : "border-slate-200 text-slate-600 hover:bg-slate-50"
                 }`}
@@ -304,9 +304,9 @@ export function PosPage() {
 
               <button
                 type="button"
-                onClick={() => setPaymentMethod("CARD")}
+                onClick={() => setPaymentMethod("CARTE")}
                 className={`py-1.5 px-1 rounded-md text-[11px] font-semibold border flex flex-col items-center gap-0.5 ${
-                  paymentMethod === "CARD"
+                  paymentMethod === "CARTE"
                     ? "bg-blue-50 border-blue-600 text-blue-700"
                     : "border-slate-200 text-slate-600 hover:bg-slate-50"
                 }`}
@@ -339,57 +339,60 @@ export function PosPage() {
               <p className="text-xs text-center">Le panier est vide.<br />Cliquez sur un article pour l'ajouter.</p>
             </div>
           ) : (
-            items.map((item) => (
-              <div
-                key={item.article.id}
-                className="p-2.5 rounded-lg border border-slate-200 bg-slate-50/50 flex items-center justify-between gap-2"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold text-slate-900 truncate">
-                    {item.article.name}
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    {formatCurrency(item.unit_price)} x {item.quantity} {item.article.unit}
-                  </p>
-                </div>
+            items.map((item) => {
+              const currentStock = item.article.current_stock ?? item.article.stock_current ?? 0
+              return (
+                <div
+                  key={item.article.id}
+                  className="p-2.5 rounded-lg border border-slate-200 bg-slate-50/50 flex items-center justify-between gap-2"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-slate-900 truncate">
+                      {item.article.name}
+                    </p>
+                    <p className="text-[11px] text-slate-500">
+                      {formatCurrency(item.unit_price)} x {item.quantity} {item.article.unit}
+                    </p>
+                  </div>
 
-                {/* Quantity Controls */}
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => updateQuantity(item.article.id, item.quantity - 1)}
-                    className="h-6 w-6 rounded bg-white border border-slate-300 flex items-center justify-center hover:bg-slate-100 text-slate-700"
-                  >
-                    <Minus className="h-3 w-3" />
-                  </button>
-                  <span className="w-7 text-center font-bold text-xs">
-                    {item.quantity}
-                  </span>
-                  <button
-                    onClick={() => {
-                      if (item.quantity < item.article.stock_current) {
-                        updateQuantity(item.article.id, item.quantity + 1)
-                      }
-                    }}
-                    disabled={item.quantity >= item.article.stock_current}
-                    className="h-6 w-6 rounded bg-white border border-slate-300 flex items-center justify-center hover:bg-slate-100 text-slate-700 disabled:opacity-40"
-                  >
-                    <Plus className="h-3 w-3" />
-                  </button>
-                </div>
+                  {/* Quantity Controls */}
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => updateQuantity(item.article.id, item.quantity - 1)}
+                      className="h-6 w-6 rounded bg-white border border-slate-300 flex items-center justify-center hover:bg-slate-100 text-slate-700"
+                    >
+                      <Minus className="h-3 w-3" />
+                    </button>
+                    <span className="w-7 text-center font-bold text-xs">
+                      {item.quantity}
+                    </span>
+                    <button
+                      onClick={() => {
+                        if (item.quantity < currentStock) {
+                          updateQuantity(item.article.id, item.quantity + 1)
+                        }
+                      }}
+                      disabled={item.quantity >= currentStock}
+                      className="h-6 w-6 rounded bg-white border border-slate-300 flex items-center justify-center hover:bg-slate-100 text-slate-700 disabled:opacity-40"
+                    >
+                      <Plus className="h-3 w-3" />
+                    </button>
+                  </div>
 
-                <div className="text-right">
-                  <p className="text-xs font-bold text-slate-900">
-                    {formatCurrency(item.total)}
-                  </p>
-                  <button
-                    onClick={() => removeItem(item.article.id)}
-                    className="text-[10px] text-red-500 hover:text-red-700 transition-colors"
-                  >
-                    Suppr.
-                  </button>
+                  <div className="text-right">
+                    <p className="text-xs font-bold text-slate-900">
+                      {formatCurrency(item.total)}
+                    </p>
+                    <button
+                      onClick={() => removeItem(item.article.id)}
+                      className="text-[10px] text-red-500 hover:text-red-700 transition-colors"
+                    >
+                      Suppr.
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))
+              )
+            })
           )}
         </div>
 
@@ -481,11 +484,11 @@ export function PosPage() {
             <div className="space-y-1 text-slate-600">
               <div className="flex justify-between">
                 <span>Facture N°:</span>
-                <span className="font-bold text-slate-900">{completedSale.invoice_number}</span>
+                <span className="font-bold text-slate-900">{completedSale.sale_number}</span>
               </div>
               <div className="flex justify-between">
                 <span>Date:</span>
-                <span>{formatDate(completedSale.created_at)}</span>
+                <span>{formatDate(completedSale.sale_date || completedSale.created_at)}</span>
               </div>
               <div className="flex justify-between">
                 <span>Mode Paiement:</span>
@@ -493,7 +496,7 @@ export function PosPage() {
               </div>
               <div className="flex justify-between">
                 <span>Caissier:</span>
-                <span>{user?.full_name || "Caisse"}</span>
+                <span>{completedSale.user_name || user?.full_name || "Caisse"}</span>
               </div>
             </div>
 
@@ -509,10 +512,10 @@ export function PosPage() {
               <tbody className="divide-y divide-slate-100">
                 {completedSale.items.map((item) => (
                   <tr key={item.id}>
-                    <td className="py-1 max-w-[130px] truncate">{item.article?.name || "Article"}</td>
+                    <td className="py-1 max-w-[130px] truncate">{item.article_name || "Article"}</td>
                     <td className="py-1 text-center">{item.quantity}</td>
                     <td className="py-1 text-right">{item.unit_price}</td>
-                    <td className="py-1 text-right font-bold">{item.total_price}</td>
+                    <td className="py-1 text-right font-bold">{item.subtotal}</td>
                   </tr>
                 ))}
               </tbody>
@@ -521,7 +524,7 @@ export function PosPage() {
             <div className="space-y-1 pt-1">
               <div className="flex justify-between text-slate-600">
                 <span>Sous-total:</span>
-                <span>{formatCurrency(completedSale.subtotal)}</span>
+                <span>{formatCurrency(completedSale.total_amount + completedSale.discount_amount)}</span>
               </div>
               {completedSale.discount_amount > 0 && (
                 <div className="flex justify-between text-red-600">

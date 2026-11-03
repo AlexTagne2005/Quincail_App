@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { authApi } from "@/api/authApi"
 import { User } from "@/types"
+import { formatErrorMessage } from "@/lib/utils"
 
 interface AuthState {
   user: User | null
@@ -37,9 +38,11 @@ export const useAuthStore = create<AuthState>((set) => ({
         isLoading: false,
         error: null,
       })
-    } catch (err: any) {
-      const message =
-        err.response?.data?.detail || "Échec de connexion. Vérifiez vos identifiants."
+    } catch (err: unknown) {
+      const message = formatErrorMessage(
+        err,
+        "Échec de connexion. Vérifiez vos identifiants."
+      )
       set({ isLoading: false, error: message })
       throw new Error(message)
     }
